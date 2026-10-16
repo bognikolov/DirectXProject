@@ -5,20 +5,25 @@
 #include <sstream>
 
 #pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "d3d12.lib")
 
 using Microsoft::WRL::ComPtr;
 
 bool Renderer::Initialize()
 {
-    HRESULT hr = CreateDXGIFactory1(IID_PPV_ARGS(&m_factory));
-    if (FAILED(hr))
-    {
-        std::wcerr << L"CreateDXGIFactory1 failed: 0x" << std::hex << hr << std::dec << L"\n";
+    if (!CheckResult(CreateDXGIFactory1(IID_PPV_ARGS(&m_factory)), L"CreateDXGIFactory1"))
         return false;
-    }
 
     EnumerateAdapters();
     return true;
+}
+
+bool Renderer::InitializeDirect3D12()
+{
+    return CreateDevice()
+        && CreateCommandQueue()
+        && CreateCommandAllocator()
+        && CreateCommandList();
 }
 
 void Renderer::EnumerateAdapters()
@@ -42,6 +47,7 @@ void Renderer::EnumerateAdapters()
             info.sharedSystemMemory = desc.SharedSystemMemory;
             info.software = (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0;
             info.luid = desc.AdapterLuid;
+            info.adapter = adapter;
 
             LARGE_INTEGER driver{};
             if (SUCCEEDED(adapter->CheckInterfaceSupport(__uuidof(IDXGIDevice), &driver)))
@@ -65,6 +71,83 @@ void Renderer::EnumerateAdapters()
         }
         adapter.Reset();
     }
+}
+
+bool Renderer::CreateDevice()
+{
+    for (const AdapterInfo& info : m_adapters)
+    {
+        if (info.software)
+            continue;
+
+        HRESULT hr = D3D12CreateDevice(info.adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&m_device));
+        if (SUCCEEDED(hr))
+        {
+            std::wcout << L"ID3D12Device created on adapter: " << info.name << L"\n";
+            return true;
+        }
+
+        std::wcerr << L"Adapter \"" << info.name << L"\" cannot create a Direct3D 12 device: 0x"
+                   << std::hex << static_cast<unsigned long>(hr) << std::dec << L"\n";
+    }
+
+    std::wcerr << L"No hardware adapter with Direct3D 12 support was found\n";
+    return false;
+}
+
+bool Renderer::CreateCommandQueue()
+{
+    D3D12_COMMAND_QUEUE_DESC desc{};
+    desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+    desc.Priority = D3D12_COMMAND_QUEUE_PRIORITY_NORMAL;
+    desc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+    desc.NodeMask = 0;
+
+    HRESULT hr = m_device->CreateCommandQueue(&desc, IID_PPV_ARGS(&m_commandQueue));
+    if (!CheckResult(hr, L"ID3D12Device::CreateCommandQueue"))
+        return false;
+
+    std::wcout << L"ID3D12CommandQueue created\n";
+    return true;
+}
+
+bool Renderer::CreateCommandAllocator()
+{
+    HRESULT hr = m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_commandAllocator));
+    if (!CheckResult(hr, L"ID3D12Device::CreateCommandAllocator"))
+        return false;
+
+    std::wcout << L"ID3D12CommandAllocator created\n";
+    return true;
+}
+
+bool Renderer::CreateCommandList()
+{
+    HRESULT hr = m_device->CreateCommandList(
+        0,
+        D3D12_COMMAND_LIST_TYPE_DIRECT,
+        m_commandAllocator.Get(),
+        nullptr,
+        IID_PPV_ARGS(&m_commandList));
+    if (!CheckResult(hr, L"ID3D12Device::CreateCommandList"))
+        return false;
+
+    if (!CheckResult(m_commandList->Close(), L"ID3D12GraphicsCommandList::Close"))
+        return false;
+
+    std::wcout << L"ID3D12GraphicsCommandList created\n";
+    return true;
+}
+
+bool Renderer::CheckResult(HRESULT hr, const wchar_t* operation)
+{
+    if (FAILED(hr))
+    {
+        std::wcerr << operation << L" failed: 0x"
+                   << std::hex << static_cast<unsigned long>(hr) << std::dec << L"\n";
+        return false;
+    }
+    return true;
 }
 
 void Renderer::PrintAdapters() const
