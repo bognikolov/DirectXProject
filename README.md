@@ -25,6 +25,10 @@ The executable is placed in `x64/Release/`. `dxgi.lib` and `d3d12.lib` are linke
   - `ID3D12CommandQueue` (direct type, no flags)
   - `ID3D12CommandAllocator` (direct type)
   - `ID3D12GraphicsCommandList` (direct type, created with the allocator)
+- Render target texture:
+  - `ID3D12Resource` created with `CreateCommittedResource()` in a default (GPU) heap, 1280x720, `DXGI_FORMAT_R8G8B8A8_UNORM`
+  - RTV `ID3D12DescriptorHeap` and a render target view created with `CreateRenderTargetView()`
+  - Command list records `OMSetRenderTargets()` and `ClearRenderTargetView()`
 - Every creation step is checked and a failure is reported with its HRESULT
 
 ## Usage
@@ -52,6 +56,7 @@ Each stage is developed in its own branch based on the previous one.
 |---|---|
 | `lecture-01` | DXGI adapter enumeration |
 | `lecture-02` | Direct3D 12 device, command queue, command allocator and command list |
+| `lecture-03` | Render target texture, descriptor heap, render target view and clear command |
 
 ## Releases
 

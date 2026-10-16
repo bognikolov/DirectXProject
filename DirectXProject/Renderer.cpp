@@ -9,6 +9,14 @@
 
 using Microsoft::WRL::ComPtr;
 
+namespace
+{
+    constexpr UINT kRenderTargetWidth = 1280;
+    constexpr UINT kRenderTargetHeight = 720;
+    constexpr DXGI_FORMAT kRenderTargetFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+    constexpr float kClearColor[4] = { 0.0f, 0.2f, 0.4f, 1.0f };
+}
+
 bool Renderer::Initialize()
 {
     if (!CheckResult(CreateDXGIFactory1(IID_PPV_ARGS(&m_factory)), L"CreateDXGIFactory1"))
@@ -23,7 +31,11 @@ bool Renderer::InitializeDirect3D12()
     return CreateDevice()
         && CreateCommandQueue()
         && CreateCommandAllocator()
-        && CreateCommandList();
+        && CreateCommandList()
+        && CreateRenderTarget()
+        && CreateDescriptorHeap()
+        && CreateRenderTargetView()
+        && RecordCommands();
 }
 
 void Renderer::EnumerateAdapters()
@@ -132,10 +144,86 @@ bool Renderer::CreateCommandList()
     if (!CheckResult(hr, L"ID3D12Device::CreateCommandList"))
         return false;
 
+    std::wcout << L"ID3D12GraphicsCommandList created\n";
+    return true;
+}
+
+bool Renderer::CreateRenderTarget()
+{
+    D3D12_HEAP_PROPERTIES heapProperties{};
+    heapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
+    heapProperties.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+    heapProperties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+    heapProperties.CreationNodeMask = 1;
+    heapProperties.VisibleNodeMask = 1;
+
+    D3D12_RESOURCE_DESC resourceDesc{};
+    resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    resourceDesc.Alignment = 0;
+    resourceDesc.Width = kRenderTargetWidth;
+    resourceDesc.Height = kRenderTargetHeight;
+    resourceDesc.DepthOrArraySize = 1;
+    resourceDesc.MipLevels = 1;
+    resourceDesc.Format = kRenderTargetFormat;
+    resourceDesc.SampleDesc.Count = 1;
+    resourceDesc.SampleDesc.Quality = 0;
+    resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    resourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+
+    D3D12_CLEAR_VALUE clearValue{};
+    clearValue.Format = kRenderTargetFormat;
+    for (int i = 0; i < 4; ++i)
+        clearValue.Color[i] = kClearColor[i];
+
+    HRESULT hr = m_device->CreateCommittedResource(
+        &heapProperties,
+        D3D12_HEAP_FLAG_NONE,
+        &resourceDesc,
+        D3D12_RESOURCE_STATE_RENDER_TARGET,
+        &clearValue,
+        IID_PPV_ARGS(&m_renderTarget));
+    if (!CheckResult(hr, L"ID3D12Device::CreateCommittedResource"))
+        return false;
+
+    std::wcout << L"Render target ID3D12Resource created ("
+               << kRenderTargetWidth << L"x" << kRenderTargetHeight << L")\n";
+    return true;
+}
+
+bool Renderer::CreateDescriptorHeap()
+{
+    D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
+    heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+    heapDesc.NumDescriptors = 1;
+    heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+    heapDesc.NodeMask = 0;
+
+    HRESULT hr = m_device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_rtvHeap));
+    if (!CheckResult(hr, L"ID3D12Device::CreateDescriptorHeap"))
+        return false;
+
+    std::wcout << L"ID3D12DescriptorHeap created\n";
+    return true;
+}
+
+bool Renderer::CreateRenderTargetView()
+{
+    m_rtvHandle = m_rtvHeap->GetCPUDescriptorHandleForHeapStart();
+    m_device->CreateRenderTargetView(m_renderTarget.Get(), nullptr, m_rtvHandle);
+
+    std::wcout << L"Render target view created\n";
+    return true;
+}
+
+bool Renderer::RecordCommands()
+{
+    m_commandList->OMSetRenderTargets(1, &m_rtvHandle, FALSE, nullptr);
+    m_commandList->ClearRenderTargetView(m_rtvHandle, kClearColor, 0, nullptr);
+
     if (!CheckResult(m_commandList->Close(), L"ID3D12GraphicsCommandList::Close"))
         return false;
 
-    std::wcout << L"ID3D12GraphicsCommandList created\n";
+    std::wcout << L"Commands recorded: OMSetRenderTargets, ClearRenderTargetView\n";
     return true;
 }
 
