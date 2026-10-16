@@ -38,6 +38,10 @@ private:
     bool CreateCommandQueue();
     bool CreateCommandAllocator();
     bool CreateCommandList();
+    bool CreateRenderTarget();
+    bool CreateDescriptorHeap();
+    bool CreateRenderTargetView();
+    bool RecordCommands();
 
     static bool CheckResult(HRESULT hr, const wchar_t* operation);
     static void PrintAdapter(UINT index, const AdapterInfo& info);
@@ -51,4 +55,8 @@ private:
     Microsoft::WRL::ComPtr<ID3D12CommandQueue> m_commandQueue;
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> m_commandAllocator;
     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> m_commandList;
+
+    Microsoft::WRL::ComPtr<ID3D12Resource> m_renderTarget;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
+    D3D12_CPU_DESCRIPTOR_HANDLE m_rtvHandle{};
 };
